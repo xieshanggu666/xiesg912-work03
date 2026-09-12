@@ -40,7 +40,16 @@ export default function App(): JSX.Element {
           <StoryboardBar />
         </aside>
       </div>
-      {toast && <div className="toast">{toast}</div>}
+      {toast && (
+        <div className="toast">
+          <span>{toast.msg}</span>
+          {toast.action && (
+            <button className="toast-action" onClick={toast.action.run}>
+              {toast.action.label}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

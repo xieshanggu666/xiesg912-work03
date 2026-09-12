@@ -9,13 +9,18 @@ export function Snapshots(): JSX.Element {
   const loadSnapshot = useStudio((s) => s.loadSnapshot)
   const replaying = useStudio((s) => s.replaying)
   const [title, setTitle] = useState('')
+  const [note, setNote] = useState('')
 
   const capture = async (): Promise<void> => {
     const s = useStudio.getState()
     const thumb = drawThumbnail(s.engine.glass, s.engine.input, s.metrics)
     const n = snapshots.length + 1
-    await addSnapshot(title.trim() || `工序 ${n}`, '', thumb)
-    setTitle('')
+    // 保存失败时保留已填内容，便于重试
+    const ok = await addSnapshot(title.trim() || `工序 ${n}`, note.trim(), thumb)
+    if (ok) {
+      setTitle('')
+      setNote('')
+    }
   }
 
   return (
@@ -24,6 +29,7 @@ export function Snapshots(): JSX.Element {
       <div className="snap-form">
         <input
           value={title}
+          maxLength={30}
           placeholder="节点名称（可选）"
           onChange={(ev) => setTitle(ev.target.value)}
           disabled={replaying}
@@ -32,6 +38,14 @@ export function Snapshots(): JSX.Element {
           拍快照
         </button>
       </div>
+      <input
+        className="snap-note-input"
+        value={note}
+        maxLength={60}
+        placeholder="工序备注（可选，如：鼓腹完成、开始收颈）"
+        onChange={(ev) => setNote(ev.target.value)}
+        disabled={replaying}
+      />
       {snapshots.length === 0 && <p className="muted small">还没有快照，在关键工序节点拍一张。</p>}
       <ul className="snap-list">
         {snapshots.map((meta) => (
@@ -39,6 +53,14 @@ export function Snapshots(): JSX.Element {
             <img src={meta.record.thumb} alt={meta.record.title} />
             <div className="snap-info">
               <b>{meta.record.title}</b>
+              {meta.record.note && <span className="snap-note">{meta.record.note}</span>}
+              <span className="snap-statusline">
+                <i className={`snap-badge ${meta.summary.tone}`}>{meta.summary.status}</i>
+                {meta.summary.temp}℃ · 伸长×{meta.summary.elongation.toFixed(2)}
+              </span>
+              {meta.summary.warnings.length > 0 && (
+                <span className="snap-warn">{meta.summary.warnings.join(' · ')}</span>
+              )}
               <span>{new Date(meta.record.created_at).toLocaleTimeString()}</span>
               <div className="snap-actions">
                 <button disabled={replaying} onClick={() => loadSnapshot(meta)}>
@@ -55,6 +77,7 @@ export function Snapshots(): JSX.Element {
           </li>
         ))}
       </ul>
+      <p className="muted small">删除后 6 秒内可从提示条撤销。</p>
     </div>
   )
 }

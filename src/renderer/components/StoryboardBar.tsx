@@ -1,19 +1,10 @@
 import { useState } from 'react'
 import { useStudio } from '../state/store'
 import { drawThumbnail } from '../engine/render'
-import { restoreGlass, type Glass } from '../engine/geometry'
+import { restoreGlass } from '../engine/geometry'
 import { DEFAULT_INPUT, measure } from '../engine/engine'
+import { describeGlass } from '../engine/describe'
 import { exportStoryboard, saveStoryboardFile } from '../state/storage'
-
-function describe(glass: Glass): string {
-  const m = measure(glass)
-  const tags: string[] = []
-  tags.push(`${m.avgTemp.toFixed(0)}℃`)
-  tags.push(m.isVase ? '已成型' : m.isRuined ? '已开裂' : '成形中')
-  if (m.avgBubbles > 0.25) tags.push('多气泡')
-  if (m.maxStress > 60) tags.push('高应力')
-  return tags.join(' · ')
-}
 
 export function StoryboardBar(): JSX.Element {
   const snapshots = useStudio((s) => s.snapshots)
@@ -33,7 +24,7 @@ export function StoryboardBar(): JSX.Element {
         const glass = restoreGlass(meta.snapshot)
         return {
           title: meta.record.title,
-          caption: meta.record.note || describe(glass),
+          caption: meta.record.note || describeGlass(glass),
           thumb: drawThumbnail(glass, DEFAULT_INPUT, measure(glass))
         }
       })

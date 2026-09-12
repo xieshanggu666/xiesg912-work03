@@ -1,12 +1,66 @@
-import { useState } from 'react'
-import { useStudio } from '../state/store'
+import { useEffect, useState } from 'react'
+import { useStudio, type SnapshotMeta } from '../state/store'
 import { drawThumbnail } from '../engine/render'
+
+/** 确认删除的等待时长，超时未确认自动还原为普通按钮 */
+const CONFIRM_MS = 5000
+
+function SnapshotItem(props: { meta: SnapshotMeta; replaying: boolean }): JSX.Element {
+  const { meta, replaying } = props
+  const loadSnapshot = useStudio((s) => s.loadSnapshot)
+  const removeSnapshot = useStudio((s) => s.removeSnapshot)
+  const [confirming, setConfirming] = useState(false)
+
+  // 进入确认态后超时自动取消，避免误触遗留
+  useEffect(() => {
+    if (!confirming) return
+    const timer = setTimeout(() => setConfirming(false), CONFIRM_MS)
+    return () => clearTimeout(timer)
+  }, [confirming])
+
+  const confirmDelete = (): void => {
+    if (meta.record.id != null) void removeSnapshot(meta.record.id)
+  }
+
+  return (
+    <li>
+      <img src={meta.record.thumb} alt={meta.record.title} />
+      <div className="snap-info">
+        <b>{meta.record.title}</b>
+        {meta.record.note && <span className="snap-note">{meta.record.note}</span>}
+        <span className="snap-statusline">
+          <i className={`snap-badge ${meta.summary.tone}`}>{meta.summary.status}</i>
+          {meta.summary.temp}℃ · 伸长×{meta.summary.elongation.toFixed(2)}
+        </span>
+        {meta.summary.warnings.length > 0 && (
+          <span className="snap-warn">{meta.summary.warnings.join(' · ')}</span>
+        )}
+        <span>{new Date(meta.record.created_at).toLocaleTimeString()}</span>
+        {confirming ? (
+          <div className="snap-actions">
+            <button className="danger-btn confirm" onClick={confirmDelete}>
+              确认删除
+            </button>
+            <button onClick={() => setConfirming(false)}>取消</button>
+          </div>
+        ) : (
+          <div className="snap-actions">
+            <button disabled={replaying} onClick={() => loadSnapshot(meta)}>
+              读取
+            </button>
+            <button className="danger-btn" onClick={() => setConfirming(true)}>
+              删除
+            </button>
+          </div>
+        )}
+      </div>
+    </li>
+  )
+}
 
 export function Snapshots(): JSX.Element {
   const snapshots = useStudio((s) => s.snapshots)
   const addSnapshot = useStudio((s) => s.addSnapshot)
-  const removeSnapshot = useStudio((s) => s.removeSnapshot)
-  const loadSnapshot = useStudio((s) => s.loadSnapshot)
   const replaying = useStudio((s) => s.replaying)
   const [title, setTitle] = useState('')
   const [note, setNote] = useState('')
@@ -49,35 +103,10 @@ export function Snapshots(): JSX.Element {
       {snapshots.length === 0 && <p className="muted small">还没有快照，在关键工序节点拍一张。</p>}
       <ul className="snap-list">
         {snapshots.map((meta) => (
-          <li key={meta.record.id}>
-            <img src={meta.record.thumb} alt={meta.record.title} />
-            <div className="snap-info">
-              <b>{meta.record.title}</b>
-              {meta.record.note && <span className="snap-note">{meta.record.note}</span>}
-              <span className="snap-statusline">
-                <i className={`snap-badge ${meta.summary.tone}`}>{meta.summary.status}</i>
-                {meta.summary.temp}℃ · 伸长×{meta.summary.elongation.toFixed(2)}
-              </span>
-              {meta.summary.warnings.length > 0 && (
-                <span className="snap-warn">{meta.summary.warnings.join(' · ')}</span>
-              )}
-              <span>{new Date(meta.record.created_at).toLocaleTimeString()}</span>
-              <div className="snap-actions">
-                <button disabled={replaying} onClick={() => loadSnapshot(meta)}>
-                  读取
-                </button>
-                <button
-                  className="danger-btn"
-                  onClick={() => meta.record.id != null && removeSnapshot(meta.record.id)}
-                >
-                  删除
-                </button>
-              </div>
-            </div>
-          </li>
+          <SnapshotItem key={meta.record.id} meta={meta} replaying={replaying} />
         ))}
       </ul>
-      <p className="muted small">删除后 6 秒内可从提示条撤销。</p>
+      <p className="muted small">删除需再点一次「确认删除」（5 秒内可取消），防止误删。</p>
     </div>
   )
 }

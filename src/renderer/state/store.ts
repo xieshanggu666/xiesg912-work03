@@ -24,11 +24,6 @@ export interface SnapshotMeta {
   summary: GlassStatusSummary
 }
 
-export interface ToastAction {
-  label: string
-  run: () => void
-}
-
 interface StudioState {
   engine: Engine
   tool: ToolId
@@ -40,7 +35,7 @@ interface StudioState {
   replaying: boolean
   replayProgress: number
   snapshots: SnapshotMeta[]
-  toast: { msg: string; action?: ToastAction } | null
+  toast: string | null
   busy: boolean
 
   bump: () => void
@@ -50,7 +45,7 @@ interface StudioState {
 
   refreshSnapshots: () => Promise<void>
   addSnapshot: (title: string, note: string, thumb: string) => Promise<boolean>
-  removeSnapshot: (id: number) => void
+  removeSnapshot: (id: number) => Promise<void>
   loadSnapshot: (meta: SnapshotMeta) => void
 
   playReplay: () => void
@@ -60,52 +55,14 @@ interface StudioState {
   importTrajectory: () => Promise<void>
 
   resetGlass: () => void
-  showToast: (msg: string, action?: ToastAction, durationMs?: number) => void
+  showToast: (msg: string) => void
   setBusy: (v: boolean) => void
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
-/** 删除撤销窗口：超时后才真正从存储移除 */
-const UNDO_WINDOW_MS = 6000
-
-interface PendingDelete {
-  meta: SnapshotMeta
-  /** 从列表移除时的下标，删除失败时按原位置恢复 */
-  index: number
-  timer: ReturnType<typeof setTimeout>
-}
-
-/** 已移出列表、等待超时确认的删除（id → 现场） */
-const pendingDeletes = new Map<number, PendingDelete>()
-
 export const useStudio = create<StudioState>((set, get) => {
   const engine = new Engine()
-
-  /** 撤销窗口结束，真正写入存储；失败时把快照放回列表原位置 */
-  const finalizeDelete = async (id: number): Promise<void> => {
-    const pending = pendingDeletes.get(id)
-    if (!pending) return
-    pendingDeletes.delete(id)
-    try {
-      await deleteSnapshot(id)
-    } catch (err) {
-      const list = get().snapshots.slice()
-      list.splice(Math.min(pending.index, list.length), 0, pending.meta)
-      set({ snapshots: list })
-      get().showToast(`删除快照失败：${(err as Error).message}`)
-    }
-  }
-
-  const undoDelete = async (id: number): Promise<void> => {
-    const pending = pendingDeletes.get(id)
-    if (!pending) return
-    clearTimeout(pending.timer)
-    pendingDeletes.delete(id)
-    // 记录尚未从存储移除，刷新列表即可恢复
-    await get().refreshSnapshots()
-    get().showToast('已撤销删除')
-  }
 
   return {
     engine,
@@ -144,8 +101,6 @@ export const useStudio = create<StudioState>((set, get) => {
         const metas: SnapshotMeta[] = []
         let corrupt = 0
         for (const record of records) {
-          // 处于撤销窗口内的记录保持隐藏
-          if (record.id != null && pendingDeletes.has(record.id)) continue
           try {
             const snapshot = JSON.parse(record.glass_json) as GlassSnapshot
             metas.push({
@@ -184,21 +139,15 @@ export const useStudio = create<StudioState>((set, get) => {
       }
     },
 
-    removeSnapshot: (id) => {
-      const index = get().snapshots.findIndex((m) => m.record.id === id)
-      if (index < 0 || pendingDeletes.has(id)) return
-      const meta = get().snapshots[index]
-      // 先移出列表进入撤销窗口，超时后才真正删除
-      set({ snapshots: get().snapshots.filter((m) => m.record.id !== id) })
-      const timer = setTimeout(() => {
-        void finalizeDelete(id)
-      }, UNDO_WINDOW_MS)
-      pendingDeletes.set(id, { meta, index, timer })
-      get().showToast(
-        `已删除快照「${meta.record.title}」`,
-        { label: '撤销', run: () => void undoDelete(id) },
-        UNDO_WINDOW_MS
-      )
+    removeSnapshot: async (id) => {
+      const title = get().snapshots.find((m) => m.record.id === id)?.record.title
+      try {
+        await deleteSnapshot(id)
+        await get().refreshSnapshots()
+        get().showToast(title ? `已删除快照「${title}」` : '已删除快照')
+      } catch (err) {
+        get().showToast(`删除快照失败：${(err as Error).message}`)
+      }
     },
 
     loadSnapshot: (meta) => {
@@ -297,10 +246,10 @@ export const useStudio = create<StudioState>((set, get) => {
       get().bump()
     },
 
-    showToast: (msg, action, durationMs = 2600) => {
-      set({ toast: { msg, action } })
+    showToast: (msg) => {
+      set({ toast: msg })
       if (toastTimer) clearTimeout(toastTimer)
-      toastTimer = setTimeout(() => set({ toast: null }), durationMs)
+      toastTimer = setTimeout(() => set({ toast: null }), 2600)
     },
 
     setBusy: (v) => set({ busy: v })

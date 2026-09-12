@@ -68,6 +68,8 @@ describe('快照删除二次确认（DOM 级）', () => {
   beforeEach(async () => {
     vi.useFakeTimers()
     lsData.clear()
+    // store 是跨用例的单例，重置回放状态
+    useStudio.setState({ replaying: false })
     await act(async () => {
       await useStudio.getState().refreshSnapshots()
     })
@@ -127,5 +129,28 @@ describe('快照删除二次确认（DOM 级）', () => {
 
     expect(itemCount(container)).toBe(0)
     expect(storedCount()).toBe(0)
+  })
+
+  it('回放过程中「删除」按钮禁用', async () => {
+    await act(async () => {
+      useStudio.setState({ replaying: true })
+    })
+
+    expect(findButton(container, '删除').disabled).toBe(true)
+    expect(itemCount(container)).toBe(1)
+    expect(storedCount()).toBe(1)
+  })
+
+  it('确认态下回放开始：自动取消确认且不可确认删除', async () => {
+    act(() => click(findButton(container, '删除')))
+    expect(hasButton(container, '确认删除')).toBe(true)
+
+    // 回放开始 → 确认态被取消
+    await act(async () => {
+      useStudio.setState({ replaying: true })
+    })
+    expect(hasButton(container, '确认删除')).toBe(false)
+    expect(itemCount(container)).toBe(1)
+    expect(storedCount()).toBe(1)
   })
 })

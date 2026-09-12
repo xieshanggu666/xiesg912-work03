@@ -18,6 +18,11 @@ function SnapshotItem(props: { meta: SnapshotMeta; replaying: boolean }): JSX.El
     return () => clearTimeout(timer)
   }, [confirming])
 
+  // 回放开始时取消未确认的删除（回放期间禁止删除）
+  useEffect(() => {
+    if (replaying) setConfirming(false)
+  }, [replaying])
+
   const confirmDelete = (): void => {
     if (meta.record.id != null) void removeSnapshot(meta.record.id)
   }
@@ -38,7 +43,7 @@ function SnapshotItem(props: { meta: SnapshotMeta; replaying: boolean }): JSX.El
         <span>{new Date(meta.record.created_at).toLocaleTimeString()}</span>
         {confirming ? (
           <div className="snap-actions">
-            <button className="danger-btn confirm" onClick={confirmDelete}>
+            <button className="danger-btn confirm" disabled={replaying} onClick={confirmDelete}>
               确认删除
             </button>
             <button onClick={() => setConfirming(false)}>取消</button>
@@ -48,7 +53,7 @@ function SnapshotItem(props: { meta: SnapshotMeta; replaying: boolean }): JSX.El
             <button disabled={replaying} onClick={() => loadSnapshot(meta)}>
               读取
             </button>
-            <button className="danger-btn" onClick={() => setConfirming(true)}>
+            <button className="danger-btn" disabled={replaying} onClick={() => setConfirming(true)}>
               删除
             </button>
           </div>
